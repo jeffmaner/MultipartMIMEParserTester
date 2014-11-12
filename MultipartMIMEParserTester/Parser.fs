@@ -16,6 +16,11 @@ type Content = string // TODO: Not strictly necessary.
 type Post = { postHeaders : Headers
             ; postContent : Content }
 
+type private Post1 = { contentType : string
+                     ; boundary    : string
+                     ; subtype     : string
+                     ; content     : string }
+
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module internal MParserAncillary =
   let private ($) f x = f x
@@ -100,5 +105,33 @@ type MParser(s:Stream) =
                    |> List.map f
   member x.Post = post
   override x.ToString() = text
+
+
+type MParser1(s:Stream) =
+  let ($) f x = f x
+  let undefined = failwith "Undefined."
+  let ascii = System.Text.Encoding.ASCII
+  let str cs = System.String.Concat (cs:char list)
+  let q = "\""
+  let qP = pstring q
+  let pSemicolon = pstring ";"
+  let manyNoDoubleQuote = many $ noneOf q
+  let enquoted = between qP qP manyNoDoubleQuote |>> str
+  let skip = skipStringCI
+  let pContentType = skip "content-type: "
+                     >>. manyTill anyChar (attempt $ preturn () .>> pSemicolon)
+                     |>> str
+  let pBoundary = skip " boundary=" >>. enquoted
+  let pSubtype = opt $ pSemicolon >>. skip " type=" >>. enquoted
+  let pContent = many anyChar |>> str // TODO: The content parser needs to recurse on the stream.
+  let pStream = pipe4 pContentType pBoundary pSubtype pContent
+                      $ fun c b t s -> { contentType=c; boundary=b; subtype=t; content=s }
+  let result s = P.runP pStream s
+  let r = result s
+  member p.ContentType = r.contentType
+  member p.Boundary = r.boundary
+  member p.ContentSubtype = r.subtype
+  member p.Content = r.content
+
 
 // vim:ft=fs
