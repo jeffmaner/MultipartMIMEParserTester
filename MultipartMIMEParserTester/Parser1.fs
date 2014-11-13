@@ -17,11 +17,9 @@ type UserState = { Boundary : string }
 
 module internal P =
   let ($) f x = f x
-  let undefined = failwith "Undefined."
-  let ascii = System.Text.Encoding.ASCII
-  let str cs = System.String.Concat (cs:char list)
-
-  let makeHeader ((n,v),nvps) = { name=n; value=v; addl=nvps}
+  let undefined = failwith "Undefined." // TODO: Remove when no longer used.
+  let ascii = System.Text.Encoding.ASCII // TODO: Move this if it is only used once.
+  let str cs = System.String.Concat (cs:char list) // TODO: Move this if it is only used once.
 
   let runP p s = match runParserOnStream p UserState.Default "" s ascii with
                  | Success (r,_,_) -> r
@@ -46,6 +44,7 @@ module internal P =
   let isBoundary ((n:string),_) = n.ToLower() = "boundary"
 
   let pHeader =
+      let makeHeader ((n,v),nvps) = { name=n; value=v; addl=nvps}
       let includesBoundary (h:Header1) = match h.addl with
                                          | Some xs -> xs |> List.exists isBoundary
                                          | None    -> false
@@ -77,9 +76,26 @@ module internal P =
               let p = pipe2 pHeaders pContent2 $ fun h c -> { headers=h; content=c }
                in skipString b
                   >>. manyTill p (attempt (preturn () .>> blankField))
-                  |>> Content2.Post2
 
   let pStream = runP (pipe2 pHeaders pContent2 $ fun h c -> { headers=h; content=c })
+
+  let rec pContent3 (stream:CharStream<UserState>) =
+      match stream.UserState.Boundary with
+      | "" -> // Content is text.
+              let nl = System.Environment.NewLine
+              let unlines (ss:string list) = System.String.Join (nl,ss)
+              let line = restOfLine false
+              let lines = manyTill line $ attempt (preturn () .>> blankField)
+               in pipe2 pHeaders lines
+                        $ fun h c -> [{ headers=h
+                                      ; content=Content2 $ unlines c }]
+      | _  -> // Content contains boundaries.
+              let b = "--" + stream.UserState.Boundary
+              let p = pipe2 pHeaders (fun stream -> pContent3 stream) $ fun h c -> { headers=h; content=c }
+               in skipString b
+                  >>. manyTill p (attempt (preturn () .>> blankField))
+
+  let pStream2 = runP (pipe2 pHeaders (fun stream -> pContent3 stream) $ fun h c -> { headers=h; content=c })
 
 
 type MParser2 (s:Stream) =

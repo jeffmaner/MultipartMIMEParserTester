@@ -7,7 +7,7 @@ let file = "sampleRNIFReceiptAck.txt"
 let text = File.ReadAllText(path+file)
 let s = new FileStream(path+file, FileMode.Open)
 
-let parser = new MParser1(s)
+let parser = new MParser2(s)
 
 [<Fact>]
 let canReadContentType = Assert.Equal<string> ("Multipart/related", parser.ContentType)
