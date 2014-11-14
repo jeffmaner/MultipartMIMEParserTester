@@ -91,12 +91,15 @@ module internal P =
                                       ; content=Content2 $ unlines c }]
       | _  -> // Content contains boundaries.
               let b = "--" + stream.UserState.Boundary
-              let p = pipe2 pHeaders (fun stream -> pContent3 stream) $ fun h c -> { headers=h; content=c }
+              let p = pipe2 pHeaders (fun stream -> Reply (pContent3 stream)) $ fun h c -> { headers=h; content=Post2 $ List.map runP c }
                in skipString b
                   >>. manyTill p (attempt (preturn () .>> blankField))
 
   let pStream2 = runP (pipe2 pHeaders (fun stream -> pContent3 stream) $ fun h c -> { headers=h; content=c })
 
+  let pParts = pipe4 pPart1 pPart2 pPart3 pPart4 $ fun p1 p2 p3 p4 -> [p1;p2;p3;p4]
+  let pMain = pipe2 pBody pParts $ fun b ps -> { headers=b; content=Post2 ps}
+  let pStream3 = runP pMain
 
 type MParser2 (s:Stream) =
   let r = P.pStream s
