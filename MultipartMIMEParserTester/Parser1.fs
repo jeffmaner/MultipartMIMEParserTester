@@ -12,8 +12,8 @@ type Content2 = Content2 of string
 and Post2 = { headers : Header1 list
             ; content : Content2 }
 
-type UserState = { Boundary : string }
-  with static member Default = { Boundary="" }
+// type UserState = { Boundary : string }
+//   with static member Default = { Boundary="" }
 
 module internal P =
   let ($) f x = f x
@@ -21,7 +21,8 @@ module internal P =
   let ascii = System.Text.Encoding.ASCII // TODO: Move this if it is only used once.
   let str cs = System.String.Concat (cs:char list) // TODO: Move this if it is only used once.
 
-  let runP p s = match runParserOnStream p UserState.Default "" s ascii with
+  //let runP p s = match runParserOnStream p UserState.Default "" s ascii with
+  let runP p s = match runParserOnStream p () "" s ascii with
                  | Success (r,_,_) -> r
                  | Failure (e,_,_) -> failwith (sprintf "%A" e)
 
@@ -48,9 +49,10 @@ module internal P =
       let includesBoundary (h:Header1) = match h.addl with
                                          | Some xs -> xs |> List.exists isBoundary
                                          | None    -> false
-      let setBoundary b = { Boundary=b }
+      //let setBoundary b = { Boundary=b }
        in delimited3 ":" ";" "=" blankField
           |>> makeHeader
+          (*
           >>= fun header stream -> if includesBoundary header
                                    then
                                      stream.UserState <- setBoundary (header.addl.Value
@@ -58,9 +60,11 @@ module internal P =
                                                                       |> snd)
                                      Reply ()
                                    else Reply ()
+                                   *)
 
   let pHeaders = manyTill pHeader $ attempt (preturn () .>> blankField)
 
+  (*
   let rec pContent2 (stream:CharStream<UserState>) =
       match stream.UserState.Boundary with
       | "" -> // Content is text.
@@ -96,13 +100,25 @@ module internal P =
                   >>. manyTill p (attempt (preturn () .>> blankField))
 
   let pStream2 = runP (pipe2 pHeaders (fun stream -> pContent3 stream) $ fun h c -> { headers=h; content=c })
+  *)
 
+  let pBody = pHeaders
+  let pBoundary1 = skipString "--RN-Http-Body-Boundary" >>. newline
+  let pBoundary2 = skipString "------=_Part_235_11184805.1160080657052" >>. newline
+  let pContent =
+      let nl = System.Environment.NewLine
+      let unlines (ss:string list) = System.String.Join (nl,ss)
+      let line = restOfLine false
+      let lines = manyTill line $ attempt (preturn () .>> blankField)
+       in lines |>> unlines
+  let pPart1 = pBoundary1 >>. pHeaders
+  let pPart2 = pBoundary2 >>. pipe2 pHeaders pContent $ fun h c -> { headers=h; content=c }
   let pParts = pipe4 pPart1 pPart2 pPart3 pPart4 $ fun p1 p2 p3 p4 -> [p1;p2;p3;p4]
   let pMain = pipe2 pBody pParts $ fun b ps -> { headers=b; content=Post2 ps}
   let pStream3 = runP pMain
 
 type MParser2 (s:Stream) =
-  let r = P.pStream s
+  let r = P.pStream3 s
 
   let findHeader name =
     match r.headers |> List.tryFind (fun h -> h.name.ToLower() = name) with

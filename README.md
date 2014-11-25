@@ -1,6 +1,8 @@
 MultipartMIMEParserTester
 =========================
 
+Project abandoned.
+
 Using [FParsec][1] to parse a multipart MIME POST.
 
 Work in progress.
